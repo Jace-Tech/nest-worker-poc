@@ -1,0 +1,24 @@
+**/node_modules
+**/dist
+**/.next
+**/out
+**/build
+**/coverage
+
+.git
+.gitignore
+**/.env
+**/.env.local
+**/*.log
+
+# docs / k8s not needed in the image
+k8s
+**/*.md
+
+# playwright / screenshots
+.playwright-mcp
+*.png
+
+# NOTE: apps/web source is intentionally NOT excluded here. The worker image
+# never COPYs it, but pnpm needs every workspace package.json present to resolve
+# the lockfile graph during a --frozen-lockfile install.

@@ -1,0 +1,81 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker
+  namespace: queue-lab
+  labels:
+    app: worker
+spec:
+  # Baseline before KEDA takes over. Once the ScaledObject is applied, KEDA's
+  # HPA owns the replica count between minReplicaCount and maxReplicaCount.
+  replicas: 2
+  selector:
+    matchLabels:
+      app: worker
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      # Never drop below desired capacity during a rollout; add one new pod first.
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app: worker
+    spec:
+      # Grace period MUST exceed the longest expected job so in-flight work can
+      # finish (or the abortable sleep can unwind) before SIGKILL. 120s here
+      # bounds the practical max job duration for a graceful drain.
+      terminationGracePeriodSeconds: 120
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: worker
+          # REPLACE with your Artifact Registry image, e.g.
+          # us-east4-docker.pkg.dev/PROJECT_ID/queue-lab/worker:latest
+          image: REGION-docker.pkg.dev/PROJECT_ID/queue-lab/worker:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: health
+              containerPort: 3001
+          env:
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: queue-lab-redis
+                  key: REDIS_URL
+            - name: WORKER_CONCURRENCY
+              value: "10"
+            - name: PORT
+              value: "3001"
+          resources:
+            # Autopilot bills on requests. Limits: memory only (CPU is left to
+            # equal the request so we are not throttled; memory has a hard cap).
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: health
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            timeoutSeconds: 3
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: health
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3

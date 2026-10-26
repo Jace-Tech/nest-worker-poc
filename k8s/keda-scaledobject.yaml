@@ -1,0 +1,48 @@
+# KEDA scales the worker on BullMQ's Redis queue depth.
+#
+# How KEDA reads BullMQ: a BullMQ queue keeps its waiting jobs in a Redis LIST at
+# `bull:<queueName>:wait`. For this lab that is `bull:load-test:wait`. KEDA's
+# `redis` scaler runs LLEN on that list and computes:
+#     desiredReplicas = ceil(LLEN / listLength)
+# With listLength "50", a backlog of 500 waiting jobs targets 10 replicas (capped
+# by maxReplicaCount). When the list empties, KEDA scales back down to
+# minReplicaCount (1 here — it does not scale to zero so a worker is always warm).
+#
+# Note: `wait` does not include active/delayed/prioritized jobs. For a simple
+# load test with no job priorities, LLEN(wait) is a good backlog proxy.
+---
+apiVersion: keda.sh/v1alpha1
+kind: TriggerAuthentication
+metadata:
+  name: keda-redis-auth
+  namespace: queue-lab
+spec:
+  secretTargetRef:
+    - parameter: address
+      name: queue-lab-redis
+      key: REDIS_ADDRESS
+    - parameter: password
+      name: queue-lab-redis
+      key: REDIS_PASSWORD
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: worker-scaler
+  namespace: queue-lab
+spec:
+  scaleTargetRef:
+    name: worker
+  minReplicaCount: 1
+  maxReplicaCount: 10
+  pollingInterval: 10   # seconds between LLEN checks
+  cooldownPeriod: 60    # seconds of no load before scaling down
+  triggers:
+    - type: redis
+      metadata:
+        listName: bull:load-test:wait
+        listLength: "50"
+        enableTLS: "true"
+        databaseIndex: "0"
+      authenticationRef:
+        name: keda-redis-auth

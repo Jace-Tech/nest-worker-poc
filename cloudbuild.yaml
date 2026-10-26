@@ -1,0 +1,20 @@
+# Build + push the worker image with Cloud Build. The build context is the repo
+# root (required so the shared workspace package is included).
+#
+#   gcloud builds submit --config cloudbuild.yaml \
+#     --substitutions _IMAGE=REGION-docker.pkg.dev/PROJECT_ID/queue-lab/worker:latest .
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -f
+      - apps/worker/Dockerfile
+      - -t
+      - ${_IMAGE}
+      - .
+images:
+  - ${_IMAGE}
+substitutions:
+  _IMAGE: REGION-docker.pkg.dev/PROJECT_ID/queue-lab/worker:latest
+options:
+  logging: CLOUD_LOGGING_ONLY
